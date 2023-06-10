@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
-contract MyToken is ERC721 , Ownable {
+contract WorldCup is ERC721 , Ownable {
     using Counters for Counters.Counter;
     using Address for address;
     Counters.Counter private _tokenIdCounter;
@@ -69,16 +65,13 @@ contract MyToken is ERC721 , Ownable {
         return selectedElements;
     }
 
-    function safeMint(
-        string memory _name,
-        string memory _description
-    ) external payable  {
+    function safeMint() external payable  {
         require(msg.value <= mintPrice, "Balances don't enough");
         string memory typeTrait = mintRandomTiers();
 
         uint256 tokenId = _tokenIdCounter.current() + 1;
         _safeMint(msg.sender, tokenId);
-        _nfts[tokenId] = NFT(_name, _description, typeTrait);
+        _nfts[tokenId] = NFT("Worldcup", "Worldcup 2020", typeTrait);
 
         _tokenIdCounter.increment();
         mintCounts[msg.sender] ++;
@@ -100,7 +93,6 @@ contract MyToken is ERC721 , Ownable {
         require(_to != address(0), "Cannot transfer to address zero");
         
         _transfer(msg.sender, _to, _tokenId);
-
         emit Transfer(block.timestamp,msg.sender,_to,_tokenId);
     }
 
@@ -113,7 +105,7 @@ contract MyToken is ERC721 , Ownable {
         return baseURI;
     }
 
-     function tokenURI(uint256 tokenId) override(ERC721) public view returns (string memory) {
+    function tokenURI(uint256 tokenId) override(ERC721) public view returns (string memory) {
         require(_exists(tokenId), "Token does not exist");
         NFT memory nft = _nfts[tokenId];
 
