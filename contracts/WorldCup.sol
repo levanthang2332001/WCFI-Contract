@@ -1,24 +1,44 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
-
+pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract WorldCup is ERC721, Ownable {
     using Counters for Counters.Counter;
     using Address for address;
     using SafeMath for uint256;
-    Counters.Counter private _tokenIdCounter;
+    Counters.Counter private _currentTokenId ;
 
-    uint256 public constant cost = 0.0001 ether;
+    uint256 public constant TOTAL_TIERS = 4;
+    uint256 public constant FIRST_THREE_MINTS = 3;
+    uint256 public constant COST = 100000000000000 wei;
 
-    string public baseURI = "ipfs://image/";
+    mapping(address => uint256) public _mintCount;
 
     bool public isPaused = false;
+
+    struct NFT {
+        string name;
+        uint256 rarity;
+    }
+
+    struct Tier {
+        NFT[] nfts;
+        uint256 totalRarity;
+    }
+
+    struct Metadata {
+        string name;
+        string description;
+        string traits;
+    }
+
+    mapping(uint256 => Metadata) private _metadata;
+
+    Tier[4] public tiers;
 
     event Mint(
         uint256 _date,
@@ -43,62 +63,55 @@ contract WorldCup is ERC721, Ownable {
         uint256 amount
     );
 
-    mapping(address => uint256) private mintCounts;
+    constructor() ERC721("WorldCup", "WC") {
+        // Tier 1
+        tiers[0].nfts.push(NFT("Brazil", 8));
+        tiers[0].nfts.push(NFT("France", 10));
+        tiers[0].nfts.push(NFT("England", 11));
+        tiers[0].nfts.push(NFT("Spain", 14));
+        tiers[0].nfts.push(NFT("Germany", 19));
+        tiers[0].nfts.push(NFT("Argentina", 19));
+        tiers[0].nfts.push(NFT("Belgium", 22));
+        tiers[0].nfts.push(NFT("Portugal", 22));
+        tiers[0].totalRarity = 125;
 
-    mapping(uint256 => string[]) private tiers;
+        // Tier 2
+        tiers[1].nfts.push(NFT("Netherlands", 26));
+        tiers[1].nfts.push(NFT("Denmark", 52));
+        tiers[1].nfts.push(NFT("Croatia", 65));
+        tiers[1].nfts.push(NFT("Uruguay", 93));
+        tiers[1].nfts.push(NFT("Poland", 121));
+        tiers[1].nfts.push(NFT("Senegal", 121));
+        tiers[1].nfts.push(NFT("United States", 149));
+        tiers[1].nfts.push(NFT("Serbia", 149));
+        tiers[1].totalRarity = 776;
 
-    constructor() ERC721("Worldcup", "WC") {
-        tiers[1] = [
-            "Brazil",
-            "France",
-            "England",
-            "Spain",
-            "Germany",
-            "Argentina",
-            "Belgium",
-            "Portygal"
-        ];
-        tiers[2] = [
-            "Netherlands",
-            "Denmark",
-            "Croatia",
-            "Uruguay",
-            "Poland",
-            "Senegal",
-            "United States",
-            "Serbia"
-        ];
-        tiers[3] = [
-            "Switzerland",
-            "Mexico",
-            "Wales",
-            "Ghana",
-            "Ecuador",
-            "Moroco",
-            "Cameroon",
-            "Canada"
-        ];
-        tiers[4] = [
-            "Japan",
-            "Qatar",
-            "Tunisia",
-            "South Korea",
-            "Australia",
-            "Iran",
-            "Saudi Arabia",
-            "Costa Rica"
-        ];
+        // Tier 3
+        tiers[2].nfts.push(NFT("Switzerland", 149));
+        tiers[2].nfts.push(NFT("Mexico", 186));
+        tiers[2].nfts.push(NFT("Wales", 186));
+        tiers[2].nfts.push(NFT("Ghana", 280));
+        tiers[2].nfts.push(NFT("Ecuador", 280));
+        tiers[2].nfts.push(NFT("Morocco", 373));
+        tiers[2].nfts.push(NFT("Cameroon", 466));
+        tiers[2].nfts.push(NFT("Canada", 466));
+        tiers[2].totalRarity = 2386;
+
+        // Tier 4
+        tiers[3].nfts.push(NFT("Japan", 466));
+        tiers[3].nfts.push(NFT("Qatar", 466));
+        tiers[3].nfts.push(NFT("Tunisia", 559));
+        tiers[3].nfts.push(NFT("South Korea", 746));
+        tiers[3].nfts.push(NFT("Australia", 746));
+        tiers[3].nfts.push(NFT("Iran", 932));
+        tiers[3].nfts.push(NFT("Saudi Arabia", 932));
+        tiers[3].nfts.push(NFT("Costa Rica", 1864));
+        tiers[3].totalRarity = 6711;
     }
 
-    struct NFT {
-        string name;
-        string description;
-        string traits;
+    function pause() public onlyOwner {
+        isPaused = !isPaused;
     }
-
-    mapping(uint256 => NFT) private _nfts;
-
-    
 
     function setApprovalForAll(address operator, bool approved)
         public
@@ -109,59 +122,72 @@ contract WorldCup is ERC721, Ownable {
         emit ApprovalForAllNft(msg.sender, operator, approved);
     }
 
-    function pause() public onlyOwner {
-        isPaused = !isPaused;
-    }
 
-   
     function safeMint() public payable {
-        require(!isPaused);
-
+        require(!isPaused, "Mint paused");
         if (msg.sender != owner()) {
-            require(msg.value >= cost, "Insufficient funds to mint tokens");
+            require(msg.value >= COST, "Insufficient funds to mint tokens");
         }
-
-        string memory typeTrait = mintRandomTiers();
-        uint256 tokenId = _tokenIdCounter.current().add(1);
+        
+        uint256 tokenId = _currentTokenId.current().add(1);
+        string memory country = checkRandomNft();
+        _metadata[tokenId] = Metadata("Shoes","World cup 2020", country);
         _safeMint(msg.sender, tokenId);
-        _nfts[tokenId] = NFT("Worldcup", "Worldcup 2020", typeTrait);
-
-        _tokenIdCounter.increment();
-        mintCounts[msg.sender]++;
-
+      
+        _currentTokenId.increment();
+        _mintCount[msg.sender]++;
         emit Mint(block.timestamp, address(0), msg.sender, tokenId);
     }
 
-    function mintRandomTiers() internal view returns (string memory) {
-        string memory selectedElements;
+    function checkRandomNft() public view returns(string memory) {
+        uint256 tierIdx = _getRandomTier();
+        uint256 nftIdx = _getRandomNFT(tierIdx);
 
-        if (mintCounts[msg.sender] > 3) {
-            uint256 randomTiers = randomModulus(2);
-            uint256 randomElement = randomModulus(
-                tiers[randomTiers + 1].length
-            );
-            selectedElements = tiers[randomTiers + 1][randomElement];
+        return tiers[tierIdx].nfts[nftIdx].name;
+    }
+
+   function checkValueRandom(uint256 value) public view returns(uint256) {
+       uint256 randomValue = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender, _currentTokenId.current()))) % value;
+       return randomValue;
+    }
+
+
+    function _getRandomTier() internal view returns(uint256) {
+        uint256 limit;
+
+        if (_mintCount[msg.sender] < FIRST_THREE_MINTS) {
+            limit = TOTAL_TIERS;
         } else {
-            uint256 randTiers = randomModulus(4);
-            uint256 randEl = randomModulus(tiers[randTiers + 1].length);
-            selectedElements = tiers[randTiers + 1][randEl];
+            limit = 2;
         }
-        return selectedElements;
+        uint256 randomValue = checkValueRandom(limit);
+        return randomValue;
     }
 
-    function randomModulus(uint256 mob) internal view returns (uint256) {
-        return
-            uint256(
-                keccak256(
-                    abi.encodePacked(
-                        block.timestamp,
-                        block.difficulty,
-                        msg.sender
-                    )
-                )
-            ) % mob;
-    }
 
+    function _getRandomNFT(uint256 tierIndex) private view returns (uint256) {
+        uint256 totalRarity = 0;
+
+        if (_mintCount[msg.sender] >= FIRST_THREE_MINTS && tierIndex < 2) {
+            totalRarity = tiers[tierIndex].nfts.length;
+        } else {
+            for (uint256 i = 0; i < tiers[tierIndex].nfts.length; i++) {
+                totalRarity += tiers[tierIndex].nfts[i].rarity;
+            }
+        }
+
+        uint256 randomValue = checkValueRandom(totalRarity);
+        for (uint256 i = 0; i < tiers[tierIndex].nfts.length; i++) {
+            uint256 currentRarity = (_mintCount[msg.sender] >= FIRST_THREE_MINTS && tierIndex < 2) ? 1 : tiers[tierIndex].nfts[i].rarity;
+            
+            if (randomValue < currentRarity) {
+                return i;
+            }
+            randomValue -= currentRarity;
+        }
+
+        return tiers[tierIndex].nfts.length - 1;
+    }
 
     function withdrawAll() external onlyOwner {
         require(address(this).balance > 0, "Contract balance is zero");
@@ -171,15 +197,6 @@ contract WorldCup is ERC721, Ownable {
         require(success, "Withdrawal failed");
 
         emit Withdraw(owner, address(this).balance);
-    }
-
-    function checkOwnerOfNFT(uint256 tokenId) public view returns (address) {
-        require(_exists(tokenId), "Token does not exist");
-        return ownerOf(tokenId);
-    }
-
-    function checkTotalOwerMint() external view returns (uint256) {
-        return mintCounts[msg.sender];
     }
 
     function transfer(address _to, uint256 _tokenId) public virtual {
@@ -193,14 +210,15 @@ contract WorldCup is ERC721, Ownable {
         emit Transfer(block.timestamp, msg.sender, _to, _tokenId);
     }
 
-    function getMetadata(uint256 tokenId) external view returns (NFT memory) {
-        require(_exists(tokenId), "ERC721Metadata: NFT does not exist");
-        return _nfts[tokenId];
+    function checkOwnerOfNFT(uint256 tokenId) public view returns (address) {
+        require(_exists(tokenId), "Token does not exist");
+        return ownerOf(tokenId);
     }
 
-    function _baseURI() internal view override returns (string memory) {
-        return baseURI;
+    function checkTotalOwerMint() external view returns (uint256) {
+        return _mintCount[msg.sender];
     }
+
 
     function tokenURI(uint256 tokenId)
         public
@@ -209,9 +227,9 @@ contract WorldCup is ERC721, Ownable {
         returns (string memory)
     {
         require(_exists(tokenId), "Token does not exist");
-        NFT memory nft = _nfts[tokenId];
+        Metadata memory nft = _metadata[tokenId];
 
-        string memory json = string(
+        string memory data = string(
             abi.encodePacked(
                 '{"name":"',
                 nft.name,
@@ -222,6 +240,6 @@ contract WorldCup is ERC721, Ownable {
                 '"}'
             )
         );
-        return json;
+        return data;
     }
 }
